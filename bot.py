@@ -1,7 +1,6 @@
 import requests
 import time
 import logging
-import hashlib
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -46,38 +45,28 @@ class NnnrcBot:
         if raw.startswith("0"):
             raw = raw[1:]
 
-        # Prepare password candidates — try all until one works
-        pwd        = self.password
-        pwd_md5    = hashlib.md5(pwd.encode()).hexdigest()
-        pwd_md5_lc = hashlib.md5(pwd.lower().encode()).hexdigest()
-
-        phone_candidates    = [raw, "0" + raw]
-        password_candidates = [pwd_md5, pwd, pwd_md5_lc]
-
-        for username in phone_candidates:
-            for pwd_attempt in password_candidates:
-                label = "MD5" if pwd_attempt == pwd_md5 else ("plain" if pwd_attempt == pwd else "MD5-lower")
-                self._set(message=f"Trying login: {username} / {label}")
-                try:
-                    resp = self.session.post(
-                        "https://app.nnnrc.com/api/user/login",
-                        data={"username": username, "password": pwd_attempt, "lang": "en"},
-                        timeout=15
+        # Site accepts plain-text password (confirmed)
+        for username in [raw, "0" + raw]:
+            self._set(message=f"Trying login: {username}")
+            try:
+                resp = self.session.post(
+                    "https://app.nnnrc.com/api/user/login",
+                    data={"username": username, "password": self.password, "lang": "en"},
+                    timeout=15
+                )
+                data = resp.json()
+                if data.get("code") == 1:
+                    self.token = data["info"]["token"]
+                    total      = data["info"].get("number", 0)
+                    self._set(
+                        message=f"✅ Login SUCCESS ({username}). Tasks: {total}",
+                        completed=0, total=total, status="running"
                     )
-                    self._set(message=f"Login response: {resp.text[:200]}")
-                    data = resp.json()
-                    if data.get("code") == 1:
-                        self.token = data["info"]["token"]
-                        total      = data["info"].get("number", 0)
-                        self._set(
-                            message=f"✅ Login SUCCESS ({username}/{label}). Tasks: {total}",
-                            completed=0, total=total, status="running"
-                        )
-                        return True
-                    else:
-                        self._set(message=f"❌ ({username}/{label}): {data.get('code_dec','')}")
-                except Exception as e:
-                    self._set(message=f"Exception ({username}/{label}): {e}")
+                    return True
+                else:
+                    self._set(message=f"❌ ({username}): {data.get('code_dec','')}")
+            except Exception as e:
+                self._set(message=f"Exception ({username}): {e}")
 
         return False
 
