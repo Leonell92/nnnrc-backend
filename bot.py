@@ -1,6 +1,7 @@
 import requests
 import time
 import logging
+import hashlib
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -45,13 +46,16 @@ class NnnrcBot:
         if raw.startswith("0"):
             raw = raw[1:]
 
-        # Try the bare local number, then with leading 0
+        # MD5-hash the password (site hashes it in JS before submitting)
+        hashed_pwd = hashlib.md5(self.password.encode()).hexdigest()
+
+        # Try both phone formats
         for username in [raw, "0" + raw]:
             self._set(message=f"Trying login with: {username}")
             try:
                 resp = self.session.post(
                     "https://app.nnnrc.com/api/user/login",
-                    data={"username": username, "password": self.password, "lang": "en"},
+                    data={"username": username, "password": hashed_pwd, "lang": "en"},
                     timeout=15
                 )
                 self._set(message=f"Login response: {resp.text[:300]}")
