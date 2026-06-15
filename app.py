@@ -38,6 +38,20 @@ def get_status(job_id):
     return jsonify(jobs[job_id])
 
 
+@app.route("/debug/<job_id>", methods=["GET"])
+def get_debug(job_id):
+    """Returns the full raw log for debugging purposes."""
+    if job_id not in jobs:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "status":  jobs[job_id].get("status"),
+        "message": jobs[job_id].get("message"),
+        "completed": jobs[job_id].get("completed"),
+        "total":   jobs[job_id].get("total"),
+        "full_log": jobs[job_id].get("log", [])
+    })
+
+
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "NNNRC Bot API is running."})
