@@ -114,52 +114,67 @@ class NnnrcBot:
 
         tasks_completed = 0
         empty_tries     = 0
+        done_ids        = set()   # track IDs we've already processed
 
         while empty_tries < 5:
-            self._set(message=f"📋 Fetching task list... (Completed so far: {tasks_completed})")
-            task_data = self.get_tasks(page=1)
+            found_new_task = False
 
-            if not task_data:
-                empty_tries += 1
-                self._set(message=f"No server response. Retry {empty_tries}/5 — waiting 30s...")
-                time.sleep(30)
-                continue
+            # Loop all pages (up to 3 as confirmed by the API)
+            total_pages = 3
+            for page in range(1, total_pages + 1):
+                self._set(message=f"📋 Fetching page {page}/{total_pages}... (Done: {tasks_completed})")
+                task_data = self.get_tasks(page=page)
 
-            api_code  = task_data.get("code")
-            api_msg   = task_data.get("code_dec", task_data.get("msg", ""))
-            task_list = task_data.get("info", [])
-
-            # Treat non-list "info" (e.g. a string) as empty
-            if not isinstance(task_list, list):
-                task_list = []
-
-            if api_code != 1 or not task_list:
-                empty_tries += 1
-                self._set(message=f"API code={api_code} '{api_msg}'. Retry {empty_tries}/5 — waiting 30s...")
-                time.sleep(30)
-                continue
-
-            # Tasks found!
-            empty_tries = 0
-            self._set(message=f"✅ Found {len(task_list)} tasks!")
-
-            for task in task_list:
-                task_id = (task.get("id") or task.get("task_id")
-                           or task.get("order_id") or task.get("taskId"))
-                if not task_id:
-                    self._set(message=f"⚠️ Unknown task structure: {task}")
+                if not task_data:
+                    self._set(message=f"No response on page {page}, skipping...")
                     continue
 
-                self._set(message=f"⏳ Completing task {task_id}...")
-                success = self.complete_task(task_id)
-                if success:
-                    tasks_completed += 1
-                    self._set(message=f"✅ Task {task_id} done! ({tasks_completed} total)",
-                              completed=tasks_completed)
-                else:
-                    self._set(message=f"❌ Task {task_id} failed.")
+                api_code  = task_data.get("code")
+                api_msg   = task_data.get("code_dec", task_data.get("msg", ""))
+                task_list = task_data.get("info", [])
 
-                time.sleep(22)
+                if not isinstance(task_list, list):
+                    task_list = []
+
+                if api_code != 1 or not task_list:
+                    self._set(message=f"Page {page}: code={api_code} '{api_msg}'")
+                    continue
+
+                self._set(message=f"✅ Page {page}: {len(task_list)} tasks found")
+
+                for task in task_list:
+                    task_id = (task.get("task_id") or task.get("id")
+                               or task.get("order_id") or task.get("taskId"))
+
+                    if not task_id:
+                        self._set(message=f"⚠️ Unknown task structure: {task}")
+                        continue
+
+                    # Skip tasks we already completed this session
+                    if task_id in done_ids:
+                        self._set(message=f"⏭️ Skipping {task_id} (already done)")
+                        continue
+
+                    found_new_task = True
+                    self._set(message=f"⏳ Completing task {task_id}...")
+                    success = self.complete_task(task_id)
+                    done_ids.add(task_id)
+
+                    if success:
+                        tasks_completed += 1
+                        self._set(message=f"✅ Task {task_id} done! ({tasks_completed} total)",
+                                  completed=tasks_completed)
+                    else:
+                        self._set(message=f"❌ Task {task_id} failed.")
+
+                    time.sleep(22)
+
+            if found_new_task:
+                empty_tries = 0   # reset retry counter when we found work
+            else:
+                empty_tries += 1
+                self._set(message=f"No new tasks across all pages. Retry {empty_tries}/5 — waiting 30s...")
+                time.sleep(30)
 
         self._set(message=f"🏁 Finished! Total tasks completed: {tasks_completed}",
                   completed=tasks_completed, status="finished")
