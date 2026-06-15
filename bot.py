@@ -10,7 +10,7 @@ TASK_DELAY     = 22
 # Seconds to wait when the API returns no tasks before trying again
 EMPTY_WAIT     = 30
 # Max consecutive empty sweeps before we declare "all done"
-MAX_EMPTY_TRIES = 5
+MAX_EMPTY_TRIES = 1
 # Max individual network retries per API call
 MAX_RETRIES    = 3
 RETRY_BACKOFF  = [5, 15, 30]   # seconds between retries
