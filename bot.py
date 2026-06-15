@@ -36,8 +36,16 @@ class NnnrcBot:
 
     def login(self):
         url = "https://app.nnnrc.com/api/user/login"
+        
+        # Format phone number exactly as the original script did (strip +234 and leading 0)
+        local_phone = self.phone.lstrip("+")
+        if local_phone.startswith("234"):
+            local_phone = local_phone[3:]
+        if local_phone.startswith("0"):
+            local_phone = local_phone[1:]
+            
         payload = {
-            "username": self.phone,
+            "username": local_phone,
             "password": self.password,
             "lang": "en"
         }
