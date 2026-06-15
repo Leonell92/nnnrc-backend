@@ -1,0 +1,83 @@
+name: Build Flet APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'NRC APK/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: NRC APK
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Flet
+        run: |
+          pip install flet==0.21.2
+          flet --version
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter 3.19.6
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Clear Flet template cache
+        run: |
+          rm -rf ~/.cookiecutters
+          rm -rf ~/.flet
+          echo "Cache cleared"
+
+      - name: Accept Android licenses
+        run: yes | flutter doctor --android-licenses || true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Build APK
+        run: |
+          flet build apk \
+            --project "Leo's NRC Automator" \
+            --description "Automated NRC task completion bot by Leo Emmanuel" \
+            --org com.nrcautomator.app \
+            --build-number ${{ github.run_number }} \
+            --build-version "1.0.${{ github.run_number }}"
+
+      - name: Locate APK
+        if: always()
+        run: |
+          echo "=== Searching for APKs ==="
+          find . -name "*.apk" 2>/dev/null
+          echo "=== build/ directory ==="
+          ls -la build/ 2>/dev/null || echo "no build dir"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: leos-nrc-automator-apk
+          path: |
+            NRC APK/build/apk/*.apk
+            NRC APK/build/**/*.apk
+          if-no-files-found: error
+          retention-days: 30

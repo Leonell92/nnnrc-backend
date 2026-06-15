@@ -1,0 +1,13 @@
+[tool.flet]
+app_name = "Leo's NRC Automator"
+description = "Automated NRC task completion bot by Leo Emmanuel"
+org = "com.nrcautomator.app"
+version = "1.0.0"
+build_number = 1
+
+[tool.flet.android]
+# Permissions needed for network access + WebView
+permissions = [
+  "android.permission.INTERNET",
+  "android.permission.ACCESS_NETWORK_STATE"
+]
