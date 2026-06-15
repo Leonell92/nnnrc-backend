@@ -51,7 +51,7 @@ class NnnrcBot:
         }
         self.update_status("Logging in...")
         try:
-            resp = self.session.post(url, data=payload)
+            resp = self.session.post(url, data=payload, timeout=15)
             data = resp.json()
             if data.get("code") == 1 and "info" in data:
                 self.token = data["info"].get("token")
@@ -78,7 +78,7 @@ class NnnrcBot:
             "token": self.token
         }
         try:
-            resp = self.session.post(url, data=payload)
+            resp = self.session.post(url, data=payload, timeout=15)
             data = resp.json()
             if data.get("code") == 1:
                 return data
@@ -97,7 +97,7 @@ class NnnrcBot:
             "token": self.token
         }
         try:
-            resp = self.session.post(url, data=payload)
+            resp = self.session.post(url, data=payload, timeout=15)
             data = resp.json()
             if data.get("code") == 1:
                 logging.info(f"Task {task_id} completed successfully.")
