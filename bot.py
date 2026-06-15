@@ -4,158 +4,169 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 class NnnrcBot:
     def __init__(self, phone, password, job_id, status_dict):
-        self.phone = phone
-        self.password = password
-        self.job_id = job_id
+        self.phone       = phone
+        self.password    = password
+        self.job_id      = job_id
         self.status_dict = status_dict
-        self.token = None
-        self.session = requests.Session()
-        
-        # Shared headers
+        self.token       = None
+        self.session     = requests.Session()
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0",
-            "Accept": "application/json, text/plain, */*",
+            "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/148.0.0.0",
+            "Accept":          "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "https://nnnrc.com",
-            "Referer": "https://nnnrc.com/",
-            "Authority": "app.nnnrc.com"
+            "Content-Type":    "application/x-www-form-urlencoded",
+            "Origin":          "https://nnnrc.com",
+            "Referer":         "https://nnnrc.com/",
         })
 
-    def update_status(self, status_msg, completed=None, total=None):
-        if self.job_id and self.status_dict is not None:
-            if self.job_id not in self.status_dict:
-                self.status_dict[self.job_id] = {}
-            self.status_dict[self.job_id]["message"] = status_msg
-            if completed is not None:
-                self.status_dict[self.job_id]["completed"] = completed
-            if total is not None:
-                self.status_dict[self.job_id]["total"] = total
+    # ── helpers ──────────────────────────────────────────────
+    def _set(self, message=None, completed=None, total=None, status=None):
+        """Single helper to update every field of this job's status dict."""
+        entry = self.status_dict.setdefault(self.job_id, {})
+        if message   is not None:
+            entry["message"] = message
+            entry.setdefault("log", []).append(message)
+            logging.info(message)
+        if completed is not None:
+            entry["completed"] = completed
+        if total     is not None:
+            entry["total"] = total
+        if status    is not None:
+            entry["status"] = status
 
+    # ── login ─────────────────────────────────────────────────
     def login(self):
-        url = "https://app.nnnrc.com/api/user/login"
-        
-        # Format phone number exactly as the original script did (strip +234 and leading 0)
-        local_phone = self.phone.lstrip("+")
-        if local_phone.startswith("234"):
-            local_phone = local_phone[3:]
-        if local_phone.startswith("0"):
-            local_phone = local_phone[1:]
-            
-        payload = {
-            "username": local_phone,
-            "password": self.password,
-            "lang": "en"
-        }
-        self.update_status("Logging in...")
-        try:
-            resp = self.session.post(url, data=payload, timeout=15)
-            data = resp.json()
-            if data.get("code") == 1 and "info" in data:
-                self.token = data["info"].get("token")
-                total_tasks = data["info"].get("number", 0)
-                logging.info(f"Login successful. Token acquired. Total available tasks: {total_tasks}")
-                self.update_status("Login successful", completed=0, total=total_tasks)
-                return True
-            else:
-                logging.error(f"Login failed: {data}")
-                self.update_status(f"Login failed: {data.get('code_dec', 'Unknown error')}")
-                return False
-        except Exception as e:
-            logging.error(f"Login error: {e}")
-            self.update_status(f"Login error: {str(e)}")
-            return False
+        raw = self.phone.strip().lstrip("+")
+        if raw.startswith("234"):
+            raw = raw[3:]
+        if raw.startswith("0"):
+            raw = raw[1:]
 
+        # Try the bare local number, then with leading 0
+        for username in [raw, "0" + raw]:
+            self._set(message=f"Trying login with: {username}")
+            try:
+                resp = self.session.post(
+                    "https://app.nnnrc.com/api/user/login",
+                    data={"username": username, "password": self.password, "lang": "en"},
+                    timeout=15
+                )
+                self._set(message=f"Login response: {resp.text[:300]}")
+                data = resp.json()
+                if data.get("code") == 1:
+                    self.token = data["info"]["token"]
+                    total      = data["info"].get("number", 0)
+                    self._set(
+                        message=f"✅ Login SUCCESS ({username}). Tasks available: {total}",
+                        completed=0, total=total, status="running"
+                    )
+                    return True
+                else:
+                    self._set(message=f"❌ Login failed ({username}): {data.get('code_dec','')}")
+            except Exception as e:
+                self._set(message=f"Login exception ({username}): {e}")
+
+        return False
+
+    # ── fetch task list ────────────────────────────────────────
     def get_tasks(self, page=1):
-        url = "https://app.nnnrc.com/api/task/taskOrderlist"
-        payload = {
-            "status": "1",
-            "page_no": str(page),
-            "is_u": "2",
-            "lang": "en",
-            "token": self.token
-        }
         try:
-            resp = self.session.post(url, data=payload, timeout=15)
-            data = resp.json()
-            if data.get("code") == 1:
-                return data
-            else:
-                logging.error(f"Failed to get tasks page {page}: {data}")
-                return None
+            resp = self.session.post(
+                "https://app.nnnrc.com/api/task/taskOrderlist",
+                data={"status": "1", "page_no": str(page),
+                      "is_u": "2", "lang": "en", "token": self.token},
+                timeout=15
+            )
+            self._set(message=f"taskOrderlist p{page}: {resp.text[:400]}")
+            return resp.json()
         except Exception as e:
-            logging.error(f"Get tasks error: {e}")
+            self._set(message=f"get_tasks error: {e}")
             return None
 
+    # ── complete one task ─────────────────────────────────────
     def complete_task(self, task_id):
-        url = "https://app.nnnrc.com/api/task/receiveTask"
-        payload = {
-            "id": str(task_id),
-            "lang": "en",
-            "token": self.token
-        }
         try:
-            resp = self.session.post(url, data=payload, timeout=15)
-            data = resp.json()
-            if data.get("code") == 1:
-                logging.info(f"Task {task_id} completed successfully.")
-                return True
-            else:
-                logging.warning(f"Task {task_id} failed: {data}")
-                return False
+            resp = self.session.post(
+                "https://app.nnnrc.com/api/task/receiveTask",
+                data={"id": str(task_id), "lang": "en", "token": self.token},
+                timeout=15
+            )
+            self._set(message=f"receiveTask {task_id}: {resp.text[:200]}")
+            return resp.json().get("code") == 1
         except Exception as e:
-            logging.error(f"Complete task error: {e}")
+            self._set(message=f"complete_task error: {e}")
             return False
 
+    # ── main loop ─────────────────────────────────────────────
     def run(self):
+        self._set(message="🤖 Bot starting...", status="running")
+
         if not self.login():
+            self._set(message="Login failed — stopping.", status="error")
             return
-        
-        empty_tries = 0
+
         tasks_completed = 0
-        total_tasks_target = self.status_dict[self.job_id].get("total", 0)
+        empty_tries     = 0
 
         while empty_tries < 5:
-            self.update_status(f"Fetching tasks... (Completed: {tasks_completed})")
-            
-            # Fetch page 1 (we rely on page 1 always yielding tasks if any exist)
+            self._set(message=f"📋 Fetching task list... (Completed so far: {tasks_completed})")
             task_data = self.get_tasks(page=1)
-            
-            if not task_data or not task_data.get("info"):
+
+            if not task_data:
                 empty_tries += 1
-                logging.info(f"No tasks found. Try {empty_tries}/5. Waiting 30s...")
-                self.update_status(f"No tasks available. Waiting 30s... (Retry {empty_tries}/5)")
+                self._set(message=f"No server response. Retry {empty_tries}/5 — waiting 30s...")
                 time.sleep(30)
                 continue
-                
-            tasks = task_data.get("info", [])
-            empty_tries = 0 # reset on finding tasks
-            
-            for task in tasks:
-                task_id = task.get("id")
+
+            api_code  = task_data.get("code")
+            api_msg   = task_data.get("code_dec", task_data.get("msg", ""))
+            task_list = task_data.get("info", [])
+
+            # Treat non-list "info" (e.g. a string) as empty
+            if not isinstance(task_list, list):
+                task_list = []
+
+            if api_code != 1 or not task_list:
+                empty_tries += 1
+                self._set(message=f"API code={api_code} '{api_msg}'. Retry {empty_tries}/5 — waiting 30s...")
+                time.sleep(30)
+                continue
+
+            # Tasks found!
+            empty_tries = 0
+            self._set(message=f"✅ Found {len(task_list)} tasks!")
+
+            for task in task_list:
+                task_id = (task.get("id") or task.get("task_id")
+                           or task.get("order_id") or task.get("taskId"))
                 if not task_id:
+                    self._set(message=f"⚠️ Unknown task structure: {task}")
                     continue
-                    
-                self.update_status(f"Completing task {task_id}...")
+
+                self._set(message=f"⏳ Completing task {task_id}...")
                 success = self.complete_task(task_id)
                 if success:
                     tasks_completed += 1
-                    self.update_status(f"Task {task_id} completed. Waiting 22s...", completed=tasks_completed)
+                    self._set(message=f"✅ Task {task_id} done! ({tasks_completed} total)",
+                              completed=tasks_completed)
                 else:
-                    self.update_status(f"Task {task_id} failed. Waiting 22s...", completed=tasks_completed)
-                
-                # Wait 22s between tasks
-                time.sleep(22)
-        
-        self.update_status("Job finished. No more tasks after 5 retries.", completed=tasks_completed)
-        logging.info("Bot execution finished.")
+                    self._set(message=f"❌ Task {task_id} failed.")
 
+                time.sleep(22)
+
+        self._set(message=f"🏁 Finished! Total tasks completed: {tasks_completed}",
+                  completed=tasks_completed, status="finished")
+
+
+# ── entry point called by app.py ─────────────────────────────
 def run_job(phone, password, job_id, status_dict):
     bot = NnnrcBot(phone, password, job_id, status_dict)
     try:
         bot.run()
     except Exception as e:
-        bot.update_status(f"Fatal error: {str(e)}")
+        status_dict.setdefault(job_id, {})["message"] = f"Fatal: {e}"
+        status_dict[job_id]["status"] = "error"
         logging.error(f"Fatal job error: {e}", exc_info=True)
