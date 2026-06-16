@@ -5,6 +5,7 @@ import threading
 import time
 
 API_BASE_URL = "https://leos-nrc-automation.onrender.com"
+LIVE_SITE_URL = "https://nnnrc.com/#/mytask"
 
 # ── Design Tokens ─────────────────────────────────────────────────────────────
 WHITE          = "#FFFFFF"
@@ -216,9 +217,11 @@ def main(page: ft.Page):
     # ═══════════════════════════════════════════════════════════════════════════
     def _poll():
         seen = 0
+        poll_failures = 0
         while state["is_running"] and state["job_id"]:
             try:
                 r = requests.get(f"{API_BASE_URL}/status/{state['job_id']}", timeout=10)
+                poll_failures = 0
                 if r.status_code == 200:
                     d = r.json()
                     js = d.get("status", "running")
@@ -247,8 +250,11 @@ def main(page: ft.Page):
                     page.update()
                     if not state["is_running"]:
                         break
-            except Exception as ex:
-                append_log(f"Poll error: {ex}", LOG_ERROR)
+            except Exception:
+                poll_failures += 1
+                # Transient DNS/timeouts on Render free tier — retry silently
+                if poll_failures % 10 == 0:
+                    append_log("⚠️  Brief connection hiccup — still running…", LOG_WARN)
             time.sleep(3)
 
     def _start(e):
@@ -440,19 +446,17 @@ def main(page: ft.Page):
     )
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # TAB 2 — LIVE SITE
+    # TAB 2 — LIVE SITE  (WebView unsupported on Android in Flet 0.21)
     # ═══════════════════════════════════════════════════════════════════════════
-    webview = ft.WebView(
-        url="https://nnnrc.com/#/mytask",
-        expand=True,
-        on_page_started=lambda e: None,
-    )
+    def _open_live_site(e):
+        page.launch_url(LIVE_SITE_URL)
 
     live_tab = ft.Container(
         expand=True,
-        bgcolor=WHITE,
+        bgcolor=BG_PAGE,
         content=ft.Column(
-            [
+            expand=True,
+            controls=[
                 ft.Container(
                     bgcolor=WHITE,
                     padding=ft.padding.symmetric(horizontal=20, vertical=12),
@@ -468,10 +472,56 @@ def main(page: ft.Page):
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
                 ),
-                webview,
+                ft.Container(
+                    expand=True,
+                    alignment=ft.alignment.center,
+                    padding=ft.padding.symmetric(horizontal=32),
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=0,
+                        controls=[
+                            icon_pill(ft.icons.LANGUAGE_OUTLINED, icon_size=36,
+                                      padding_val=18),
+                            ft.Container(height=20),
+                            ft.Text("nnnrc.com", size=20,
+                                    weight=ft.FontWeight.W_700, color=TEXT_PRIMARY),
+                            ft.Container(height=6),
+                            ft.Text(
+                                "View your tasks in your phone's browser.",
+                                size=13, color=TEXT_SECONDARY,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Container(height=28),
+                            ft.ElevatedButton(
+                                content=ft.Row(
+                                    [
+                                        ft.Icon(ft.icons.OPEN_IN_BROWSER,
+                                                color=WHITE, size=18),
+                                        ft.Text("Open Live Site", size=14,
+                                                weight=ft.FontWeight.W_600,
+                                                color=WHITE),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    spacing=8,
+                                ),
+                                style=ft.ButtonStyle(
+                                    shape=ft.RoundedRectangleBorder(radius=14),
+                                    bgcolor={"": ACCENT, "hovered": "#15803D",
+                                             "pressed": "#166534"},
+                                    overlay_color="#FFFFFF18",
+                                    elevation={"": 2, "hovered": 5},
+                                    shadow_color="#16A34A30",
+                                    padding=ft.padding.symmetric(
+                                        horizontal=28, vertical=15),
+                                ),
+                                on_click=_open_live_site,
+                            ),
+                        ],
+                    ),
+                ),
             ],
             spacing=0,
-            expand=True,
         ),
     )
 
