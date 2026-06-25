@@ -17,11 +17,12 @@ RETRY_BACKOFF  = [5, 15, 30]   # seconds between retries
 
 
 class NnnrcBot:
-    def __init__(self, phone, password, job_id, status_dict):
+    def __init__(self, phone, password, job_id, status_dict, api_base="https://app.nnnrc.com"):
         self.phone       = phone
         self.password    = password
         self.job_id      = job_id
         self.status_dict = status_dict
+        self.api_base    = api_base
         self.token       = None
         self.session     = requests.Session()
         self.session.headers.update({
@@ -80,7 +81,7 @@ class NnnrcBot:
         for username in [raw, "0" + raw]:
             self._set(message=f"🔑 Trying login: {username}")
             data = self._post_with_retry(
-                "https://app.nnnrc.com/api/user/login",
+                f"{self.api_base}/api/user/login",
                 {"username": username, "password": self.password, "lang": "en"},
                 label=f"login({username})"
             )
@@ -108,7 +109,7 @@ class NnnrcBot:
     # ── fetch task list ────────────────────────────────────────
     def get_tasks(self, page=1):
         data = self._post_with_retry(
-            "https://app.nnnrc.com/api/task/taskOrderlist",
+            f"{self.api_base}/api/task/taskOrderlist",
             {"status": "1", "page_no": str(page),
              "is_u": "2", "lang": "en", "token": self.token},
             label=f"get_tasks(p{page})"
@@ -124,7 +125,7 @@ class NnnrcBot:
     # ── complete one task ─────────────────────────────────────
     def complete_task(self, task_id):
         data = self._post_with_retry(
-            "https://app.nnnrc.com/api/task/receiveTask",
+            f"{self.api_base}/api/task/receiveTask",
             {"id": str(task_id), "lang": "en", "token": self.token},
             label=f"receiveTask({task_id})"
         )
@@ -138,7 +139,7 @@ class NnnrcBot:
         if code in (401, -1) or "token" in str(msg).lower() or "login" in str(msg).lower():
             if self._relogin():
                 data = self._post_with_retry(
-                    "https://app.nnnrc.com/api/task/receiveTask",
+                    f"{self.api_base}/api/task/receiveTask",
                     {"id": str(task_id), "lang": "en", "token": self.token},
                     label=f"receiveTask({task_id}) retry"
                 )
@@ -245,8 +246,8 @@ class NnnrcBot:
 
 
 # ── entry point called by app.py ─────────────────────────────
-def run_job(phone, password, job_id, status_dict):
-    bot = NnnrcBot(phone, password, job_id, status_dict)
+def run_job(phone, password, job_id, status_dict, api_base="https://app.nnnrc.com"):
+    bot = NnnrcBot(phone, password, job_id, status_dict, api_base=api_base)
     try:
         bot.run()
     except Exception as e:

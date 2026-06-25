@@ -25,9 +25,15 @@ async def start_job(request: Request):
     
     phone    = data.get("phone", "").strip()
     password = data.get("password", "").strip()
+    platform = data.get("platform", "NNNRC").strip()
 
     if not phone or not password:
         return {"error": "Missing phone or password"}
+
+    # Route traffic depending on the selected platform
+    api_base = "https://app.nnnrc.com"
+    if platform == "NTLNG":
+        api_base = "https://nrcng.rest"
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
@@ -38,7 +44,7 @@ async def start_job(request: Request):
         "log":       []
     }
 
-    t = threading.Thread(target=run_job, args=(phone, password, job_id, jobs))
+    t = threading.Thread(target=run_job, args=(phone, password, job_id, jobs, api_base))
     t.daemon = True
     t.start()
 

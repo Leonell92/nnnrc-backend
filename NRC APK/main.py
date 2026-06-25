@@ -5,7 +5,10 @@ import threading
 import time
 
 API_BASE_URL = "https://leos-nrc-automation.onrender.com"
-LIVE_SITE_URL = "https://nnnrc.com/#/mytask"
+LIVE_SITE_URLS = {
+    "NNNRC": "https://nnnrc.com/#/mytask",
+    "NTLNG": "https://ntlng.vip/xml/index.html#/"
+}
 
 # ── Design Tokens ─────────────────────────────────────────────────────────────
 WHITE          = "#FFFFFF"
@@ -181,6 +184,25 @@ def main(page: ft.Page):
         text_style=ft.TextStyle(size=14, color=TEXT_PRIMARY),
     )
 
+    platform_dropdown = ft.Dropdown(
+        label="Platform",
+        value="NNNRC",
+        options=[
+            ft.dropdown.Option("NNNRC", "NNNRC (nnnrc.com)"),
+            ft.dropdown.Option("NTLNG", "NTLNG (ntlng.vip)"),
+        ],
+        border_radius=14,
+        border_color=BORDER,
+        focused_border_color=ACCENT,
+        border_width=1.5,
+        focused_border_width=2,
+        bgcolor=WHITE,
+        focused_bgcolor=WHITE,
+        color=TEXT_PRIMARY,
+        label_style=ft.TextStyle(color=TEXT_HINT, size=13),
+        text_style=ft.TextStyle(size=14, color=TEXT_PRIMARY),
+    )
+
     phone_input    = ft.TextField(label="Phone Number",
                                   prefix_icon=ft.icons.PHONE_OUTLINED,
                                   keyboard_type=ft.KeyboardType.PHONE, **_field)
@@ -270,10 +292,11 @@ def main(page: ft.Page):
         completed_text.value  = "0 / 0 tasks"
         set_status("STARTING", STATUS_STR_BG, STATUS_STR_FG, STATUS_STR_DOT)
         page.update()
+        platform = platform_dropdown.value
         try:
-            append_log("📡  Connecting to automation server...")
+            append_log(f"📡  Connecting to automation server for {platform}...")
             r = requests.post(f"{API_BASE_URL}/start",
-                              json={"phone": phone, "password": pwd}, timeout=20)
+                              json={"phone": phone, "password": pwd, "platform": platform}, timeout=20)
             d = r.json()
             if r.status_code == 200 and "job_id" in d:
                 state["job_id"]     = d["job_id"]
@@ -348,6 +371,8 @@ def main(page: ft.Page):
                                         [
                                             section_label("ACCOUNT CREDENTIALS"),
                                             ft.Container(height=14),
+                                            platform_dropdown,
+                                            ft.Container(height=10),
                                             phone_input,
                                             ft.Container(height=10),
                                             password_input,
@@ -448,8 +473,11 @@ def main(page: ft.Page):
     # ═══════════════════════════════════════════════════════════════════════════
     # TAB 2 — LIVE SITE  (WebView unsupported on Android in Flet 0.21)
     # ═══════════════════════════════════════════════════════════════════════════
-    def _open_live_site(e):
-        page.launch_url(LIVE_SITE_URL)
+    def _open_live_site_nnnrc(e):
+        page.launch_url(LIVE_SITE_URLS["NNNRC"])
+        
+    def _open_live_site_ntlng(e):
+        page.launch_url(LIVE_SITE_URLS["NTLNG"])
 
     live_tab = ft.Container(
         expand=True,
@@ -465,7 +493,7 @@ def main(page: ft.Page):
                         [
                             icon_pill(ft.icons.LANGUAGE_OUTLINED,
                                       icon_size=15, padding_val=6),
-                            ft.Text("nnnrc.com  ·  Live View", size=13,
+                            ft.Text("Live View", size=13,
                                     weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
                         ],
                         spacing=10,
@@ -484,7 +512,7 @@ def main(page: ft.Page):
                             icon_pill(ft.icons.LANGUAGE_OUTLINED, icon_size=36,
                                       padding_val=18),
                             ft.Container(height=20),
-                            ft.Text("nnnrc.com", size=20,
+                            ft.Text("Select Site", size=20,
                                     weight=ft.FontWeight.W_700, color=TEXT_PRIMARY),
                             ft.Container(height=6),
                             ft.Text(
@@ -498,7 +526,7 @@ def main(page: ft.Page):
                                     [
                                         ft.Icon(ft.icons.OPEN_IN_BROWSER,
                                                 color=WHITE, size=18),
-                                        ft.Text("Open Live Site", size=14,
+                                        ft.Text("Open NNNRC", size=14,
                                                 weight=ft.FontWeight.W_600,
                                                 color=WHITE),
                                     ],
@@ -515,7 +543,32 @@ def main(page: ft.Page):
                                     padding=ft.padding.symmetric(
                                         horizontal=28, vertical=15),
                                 ),
-                                on_click=_open_live_site,
+                                on_click=_open_live_site_nnnrc,
+                            ),
+                            ft.Container(height=14),
+                            ft.ElevatedButton(
+                                content=ft.Row(
+                                    [
+                                        ft.Icon(ft.icons.OPEN_IN_BROWSER,
+                                                color=WHITE, size=18),
+                                        ft.Text("Open NTLNG", size=14,
+                                                weight=ft.FontWeight.W_600,
+                                                color=WHITE),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    spacing=8,
+                                ),
+                                style=ft.ButtonStyle(
+                                    shape=ft.RoundedRectangleBorder(radius=14),
+                                    bgcolor={"": "#1D4ED8", "hovered": "#1E3A8A",
+                                             "pressed": "#1E3A8A"},
+                                    overlay_color="#FFFFFF18",
+                                    elevation={"": 2, "hovered": 5},
+                                    shadow_color="#1D4ED830",
+                                    padding=ft.padding.symmetric(
+                                        horizontal=28, vertical=15),
+                                ),
+                                on_click=_open_live_site_ntlng,
                             ),
                         ],
                     ),
